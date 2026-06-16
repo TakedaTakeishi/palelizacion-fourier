@@ -8,3 +8,13 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables (credentials)
+.env
+
+# Generated CSV files
+**/hoja*.csv
+
+# Compiled binaries (local + remote)
+**/*.exe
+6_GPU/fourier_gpu
