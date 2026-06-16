@@ -138,11 +138,9 @@ int main(int argc, char **argv) {
 
     int recv_counts[4] = {0,0,0,0};
     int recv_displs[4] = {0,0,0,0};
-    int recv_counts_terms[4] = {0,0,0,0};
-    int recv_displs_terms[4] = {0,0,0,0};
 
     if (rank == 0) {
-        int offset = 0, offset_terms = 0;
+        int offset = 0;
         for (int r = 1; r < world_size; r++) {
             int wi = r - 1;
             int rb = NUM_PUNTOS / workers;
@@ -153,10 +151,7 @@ int main(int argc, char **argv) {
             int count = (end > start) ? (end - start) : 0;
             recv_counts[r] = count;
             recv_displs[r] = offset;
-            recv_counts_terms[r] = count * num_terminos;
-            recv_displs_terms[r] = offset_terms;
             offset += count;
-            offset_terms += count * num_terminos;
         }
     }
 
@@ -166,9 +161,40 @@ int main(int argc, char **argv) {
                 datos->hoja2_Fx, recv_counts, recv_displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     MPI_Gatherv(local_fx, local_count, MPI_DOUBLE,
                 datos->hoja2_fx, recv_counts, recv_displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Gatherv(local_terminos, local_count * num_terminos, MPI_DOUBLE,
-                &(datos->hoja2_terminos[0][0]), recv_counts_terms, recv_displs_terms,
-                MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        int recv_counts_terms[4] = {0, 0, 0, 0};
+        int recv_displs_terms[4] = {0, 0, 0, 0};
+        for (int r = 1; r < world_size; r++) {
+            int wi = r - 1;
+            int rb = NUM_PUNTOS / workers;
+            int rr = NUM_PUNTOS % workers;
+            int extra = (wi < rr) ? 1 : 0;
+            int start = wi * rb + (wi < rr ? wi : rr);
+            int end = start + rb + extra;
+            int count = (end > start) ? (end - start) : 0;
+            recv_counts_terms[r] = count * num_terminos;
+            recv_displs_terms[r] = (r == 1) ? 0 : recv_displs_terms[r-1] + recv_counts_terms[r-1];
+        }
+        double *flat_terms = calloc(NUM_PUNTOS * num_terminos, sizeof(double));
+        if (flat_terms) {
+            MPI_Gatherv(local_terminos, local_count * num_terminos, MPI_DOUBLE,
+                        flat_terms, recv_counts_terms, recv_displs_terms,
+                        MPI_DOUBLE, 0, MPI_COMM_WORLD);
+            for (int i = 0; i < NUM_PUNTOS; i++) {
+                for (int n = 0; n < num_terminos; n++) {
+                    datos->hoja2_terminos[i][n] = flat_terms[i * num_terminos + n];
+                }
+            }
+            free(flat_terms);
+        }
+    } else {
+        int zero_counts[4] = {0, 0, 0, 0};
+        int zero_displs[4] = {0, 0, 0, 0};
+        MPI_Gatherv(local_terminos, local_count * num_terminos, MPI_DOUBLE,
+                    NULL, zero_counts, zero_displs,
+                    MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    }
 
     if (rank == 0) {
         printf("\n[Maestro] Todos los trabajadores terminaron. Escribiendo CSV...\n\n");
