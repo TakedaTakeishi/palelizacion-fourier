@@ -1,0 +1,232 @@
+# ============================================================================
+# CONFIGURACION CENTRALIZADA – Comparativa Fourier
+# ============================================================================
+# Edita este archivo para personalizar colores, estilos, dimensiones y
+# comportamiento de cada grafica sin tocar el codigo Python.
+# ----------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------
+# 1. SALIDA GENERAL
+# ----------------------------------------------------------------------------
+output:
+  dpi: 300                    # Resolucion de las imagenes PNG
+  facecolor: "white"          # Fondo de la figura y los ejes
+  edgecolor: "black"          # Color del borde de los ejes
+  axes_linewidth: 0.9         # Grosor del rectangulo de los ejes
+  font_family: "serif"        # Familia tipografica
+  font_serif: "Times New Roman"
+
+# ----------------------------------------------------------------------------
+# 2. PALETA DE COLORES "CAOS"
+# ----------------------------------------------------------------------------
+# - 'real': color de la funcion verdadera f(x) (UNICA linea continua)
+# - 'methods': lista de colores para cada aproximacion F(x).
+#   Se asignan ciclicamente si hay mas metodos que colores.
+palette:
+  real: "#0B0C10"             # Negro Profundo
+  methods:
+    - "#66FCF1"              # 0: Cian Electrico
+    - "#FF007F"              # 1: Rosa Magenta
+    - "#39FF14"              # 2: Verde Acido
+    - "#711D9A"              # 3: Seance 
+    - "#FFD166"              # 4: Amarillo
+
+
+# ----------------------------------------------------------------------------
+# 3. ORDEN DE LOS METODOS EN LA GRAFICA 1
+# ----------------------------------------------------------------------------
+# Lista explicita de etiquetas en el orden deseado en la leyenda.
+# Si dejas 'null' (o ~), se usa orden alfabetico automatico.
+# Los nombres deben coincidir con las etiquetas detectadas (sin "Con_").
+method_order:
+  - "Procesos"
+  - "Hilos"
+  - "Mpi"
+
+# ----------------------------------------------------------------------------
+# 4. ESTILOS DE LINEA
+# ----------------------------------------------------------------------------
+lines:
+  real:
+    style: "-"                # Unica linea SOLIDA
+    width: 2.6
+    zorder: 10                # Siempre al frente
+  methods:
+    # Patrones discontinuos ciclicos. Ninguno es solido.
+    styles:
+      - "--"                 # rayas
+      - "-."                 # punto-raya
+      - ":"                  # puntos
+      - [0, [5, 1]]           # guiones largos (tuple matplotlib)
+      - [0, [3, 1, 1, 1]]     # punto-raya-corto
+    width: 1.7
+
+# ----------------------------------------------------------------------------
+# 5. EFECTO HALO / GLOW (fondo degradado)
+# ----------------------------------------------------------------------------
+# Dibuja lineas muy gruesas y transparentas DETRAS de la curva principal
+# para simular un resplandor suavizado.
+glow:
+  enabled: true
+  # Capas del halo, de mas difusa a menos difusa.
+  # Cada capa se dibuja con un zorder inferior a la siguiente.
+  layers:
+    - {width: 6.0, alpha: 0.08}
+    - {width: 3.5, alpha: 0.22}
+  zorder_base: 1              # zorder mas bajo; el halo queda al fondo
+
+# ----------------------------------------------------------------------------
+# 6. CONTROLES DE CORTES (DISCONTINUIDADES)
+# ----------------------------------------------------------------------------
+# La funcion real f(x) tiene una discontinuidad natural en los extremos del
+# periodo. 'cuts' controla segmentos ARTIFICIALES que se anaden a la curva
+# real (ademas de cualquier corte natural que ya exista en los datos).
+#   0  -> sin cortes artificiales; la linea es continua salvo gaps de datos
+#   1  -> sin cortes artificiales (igual que 0, conservado por claridad)
+#   N  -> divide el dominio en N trozos iguales insertando NaNs artificiales
+cuts:
+  real: 1                     # Cortes artificiales en la curva negra de f(x)
+
+# ----------------------------------------------------------------------------
+# 7. GRAFICA 01 – SUPERPOSICION GLOBAL
+# ----------------------------------------------------------------------------
+fig01_superposicion:
+  enabled: true
+  figsize: [9.5, 5.8]         # [ancho, alto] en pulgadas
+  title:
+    text: "Superposición de la función real y las aproximaciones de Fourier"
+    fontsize: 20
+    loc: "center"             # center | left | right
+    pad: 12                   # puntos de separacion respecto al grafico
+  xlabel:
+    text: "$x$"
+    fontsize: 13
+  ylabel:
+    text: "$F(x)$"
+    fontsize: 13
+  legend:
+    loc: "best"
+    ncol: 1
+
+# ----------------------------------------------------------------------------
+# 8. GRAFICA 02 – ERROR ABSOLUTO
+# ----------------------------------------------------------------------------
+fig02_error_absoluto:
+  enabled: true
+  figsize: [9.5, 5.8]
+  title:
+    text: "Error absoluto punto a punto"
+    fontsize: 20
+    loc: "center"
+    pad: 12
+  xlabel:
+    text: "$x$"
+    fontsize: 13
+  ylabel:
+    text: "$|F(x) - f(x)|$"
+    fontsize: 13
+  yscale: "log"
+
+# ----------------------------------------------------------------------------
+# 9. GRAFICA 03 – MÉTRICAS DE ERROR (barras)
+# ----------------------------------------------------------------------------
+fig03_metricas:
+  enabled: true
+  figsize: [12, 4.8]
+  suptitle:
+    text: "Métricas de error por método"
+    fontsize: 15
+  title_per_subplot:
+    fontsize: 20
+    loc: "center"
+    pad: 8
+  bar_width: 0.5
+  bar_edge:
+    color: "#0B0C10"          # Borde de las barras
+    width: 0.8
+  # Colores de las barras:
+  #   null  -> usa la paleta de metodos (cian, magenta, verde, amarillo...)
+  #   lista -> colores explicitos en el mismo orden que method_order
+  bar_colors: null
+  text:
+    color: "#3A0A4D"
+    fontweight: "bold"
+    fontsize: 9
+    position: "center"        # "center" o "top"
+  metrics: ["MAE", "RMSE", "Máx"]
+
+# ----------------------------------------------------------------------------
+# 10. GRAFICA 04 – FENOMENO DE GIBBS (zooms)
+# ----------------------------------------------------------------------------
+fig04_gibbs:
+  enabled: true
+  figsize: [10.5, 4.8]
+  suptitle:
+    text: "Fenómeno de Gibbs cerca de las discontinuidades"
+    fontsize: 15
+  title:
+    text: "Zoom"                # prefijo; se completa con [xmin, xmax]
+    fontsize: 20
+    loc: "center"
+    pad: 10
+  xlabel:
+    text: "$x$"
+    fontsize: 13
+  ylabel:
+    text: "$F(x)$"
+    fontsize: 13
+  # Lista de ventanas [xmin, xmax] para zoom.
+  # Puedes agregar o quitar paneles.
+  zooms:
+    - [-3.1416, -2.5]
+    - [2.5, 3.1416]
+
+# ----------------------------------------------------------------------------
+# 11. GRAFICA 05 – ERROR CUADRATICO
+# ----------------------------------------------------------------------------
+fig05_error_cuadratico:
+  enabled: true
+  figsize: [9.5, 5.8]
+  title:
+    text: "Error cuadrático punto a punto"
+    fontsize: 20
+    loc: "center"
+    pad: 12
+  xlabel:
+    text: "$x$"
+    fontsize: 13
+  ylabel:
+    text: "$(F(x) - f(x))^2$"
+    fontsize: 13
+  yscale: "log"
+
+# ----------------------------------------------------------------------------
+# 12. GRAFICA 06 – PANELES INDIVIDUALES
+# ----------------------------------------------------------------------------
+fig06_paneles:
+  enabled: true
+  cols: 2                     # Paneles por fila
+  figsize_per_panel: [5.0, 3.6]  # Tamaño base de cada celda
+  fill_alpha: 0.12            # Transparencia del relleno entre curvas
+  suptitle:
+    text: "Comparación individual: cada método vs función real"
+    fontsize: 20
+  title:
+    fontsize: 13
+    loc: "center"
+    pad: 8
+  xlabel:
+    text: "$x$"
+    fontsize: 13
+  ylabel:
+    text: "$F(x)$"
+    fontsize: 13
+
+# ----------------------------------------------------------------------------
+# 13. REPORTE MARKDOWN
+# ----------------------------------------------------------------------------
+reporte:
+  enabled: true
+  filename: "reporte.md"
+  include_table: true         # Incluye la tabla de metricas como markdown
+  float_format: "%.6e"        # Formato numerico de la tabla

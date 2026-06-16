@@ -1,0 +1,27 @@
+[project]
+authors = [{name = "Takeishi", email = "taraskerion@gmail.com"}]
+dependencies = []
+name = "Comparativa"
+requires-python = ">= 3.11"
+version = "0.1.0"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tool.pixi.pypi-dependencies]
+comparativa = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+run = 'python .\src\comparativa_fourier.py'
+
+[tool.pixi.dependencies]
+pandas = ">=3.0.3,<4"
+seaborn = ">=0.13.2,<0.14"
+openpyxl = ">=3.1.5,<4"
+tabulate = ">=0.10.0,<0.11"
+pyyaml = ">=6.0.3,<7"
