@@ -46,7 +46,7 @@ class SelectState(AppState):
 
     def _step_terms(self, delta):
         new_val = self.num_terms + delta
-        new_val = max(1, min(10000, new_val))
+        new_val = max(1, min(10_000_000, new_val))
         if new_val != self.num_terms:
             self.num_terms = new_val
             self.preview = self._make_preview()
@@ -69,9 +69,17 @@ class SelectState(AppState):
             elif event.key == pygame.K_2: self._set_function(1)
             elif event.key == pygame.K_3: self._set_function(2)
             elif event.key == pygame.K_4: self._set_function(3)
-            elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS, pygame.K_UP, pygame.K_RIGHT):
+            elif event.key == pygame.K_UP:
+                self._step_terms(1); self._key_repeat_last = 0.0
+            elif event.key == pygame.K_DOWN:
+                self._step_terms(-1); self._key_repeat_last = 0.0
+            elif event.key == pygame.K_RIGHT:
+                self._step_terms(1000); self._key_repeat_last = 0.0
+            elif event.key == pygame.K_LEFT:
+                self._step_terms(-1000); self._key_repeat_last = 0.0
+            elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
                 self._step_terms(5); self._key_repeat_last = 0.0
-            elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS, pygame.K_DOWN, pygame.K_LEFT):
+            elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                 self._step_terms(-5); self._key_repeat_last = 0.0
 
     def update(self):
@@ -85,17 +93,41 @@ class SelectState(AppState):
             if not held:
                 continue
             self.key_held_timer[key] = self.key_held_timer.get(key, 0.0) + dt
-            if key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS, pygame.K_UP, pygame.K_RIGHT):
+            if key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
                 if self.key_held_timer[key] > self._key_repeat_first:
                     used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
                     if used >= 1:
                         self._step_terms(5 * used)
                         self._key_repeat_last = self.key_held_timer[key]
-            elif key in (pygame.K_MINUS, pygame.K_KP_MINUS, pygame.K_DOWN, pygame.K_LEFT):
+            elif key == pygame.K_UP:
+                if self.key_held_timer[key] > self._key_repeat_first:
+                    used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
+                    if used >= 1:
+                        self._step_terms(1 * used)
+                        self._key_repeat_last = self.key_held_timer[key]
+            elif key == pygame.K_RIGHT:
+                if self.key_held_timer[key] > self._key_repeat_first:
+                    used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
+                    if used >= 1:
+                        self._step_terms(1000 * used)
+                        self._key_repeat_last = self.key_held_timer[key]
+            elif key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                 if self.key_held_timer[key] > self._key_repeat_first:
                     used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
                     if used >= 1:
                         self._step_terms(-5 * used)
+                        self._key_repeat_last = self.key_held_timer[key]
+            elif key == pygame.K_DOWN:
+                if self.key_held_timer[key] > self._key_repeat_first:
+                    used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
+                    if used >= 1:
+                        self._step_terms(-1 * used)
+                        self._key_repeat_last = self.key_held_timer[key]
+            elif key == pygame.K_LEFT:
+                if self.key_held_timer[key] > self._key_repeat_first:
+                    used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
+                    if used >= 1:
+                        self._step_terms(-1000 * used)
                         self._key_repeat_last = self.key_held_timer[key]
 
     def render(self, surface):
@@ -118,7 +150,7 @@ class SelectState(AppState):
                                 int(w * 0.34), int(h * 0.65))
         self._render_info(surface, info_rect, w, h)
 
-        for txt in ["[ENTER] Iniciar  |  [1-4] Función  |  [+/-, Flechas] Términos  |  [ESC] Volver"]:
+        for txt in ["[ENTER] Iniciar  |  [1-4] Función  |  [▲/▼] 1  [◄/►] 1000  [+/-] 5  |  [ESC] Volver"]:
             s = self._ctrl_font.render(txt, True, (150, 200, 150))
             surface.blit(s, (w//2 - s.get_width()//2, h - 30))
 

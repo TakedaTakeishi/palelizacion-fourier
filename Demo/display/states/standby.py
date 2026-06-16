@@ -10,7 +10,7 @@ from core.types import (
 from core.orchestrator import Orchestrator, METHOD_GPU
 
 ALL_FUNCS = [FUNC_X4, FUNC_SQUARE, FUNC_SAWTOOTH, FUNC_TRIANGLE]
-MAX_TERMINOS = 10000
+MAX_TERMINOS = 10_000_000
 SPEED_LEVELS = [0.5, 1.0, 1.5, 3.0, 6.0, 12.0]
 
 class StandbyState(AppState):
@@ -70,10 +70,13 @@ class StandbyState(AppState):
 
     def enter(self):
         super().enter()
-        self.display_terms = 1
         self.func_switch_timer = 0
         self._key_repeat_last = 0.0
         self.data = self._precompute()
+        if self.num_terms >= 1000:
+            self.display_terms = self.num_terms
+        else:
+            self.display_terms = 1
 
     def _set_function(self, idx):
         if idx == self.func_idx:
@@ -81,14 +84,20 @@ class StandbyState(AppState):
         self.func_idx = idx
         self.current_func = ALL_FUNCS[idx]
         self.data = self._precompute()
-        self.display_terms = 1
+        if self.num_terms >= 1000:
+            self.display_terms = self.num_terms
+        else:
+            self.display_terms = 1
 
-    def _step_terms(self, delta):
+    def _step_terms(self, delta, reset_animation=True):
         new_val = self.num_terms + delta
         new_val = max(1, min(MAX_TERMINOS, new_val))
         if new_val != self.num_terms:
             self.num_terms = new_val
-            self.display_terms = 1
+            if new_val >= 1000:
+                self.display_terms = new_val
+            elif reset_animation:
+                self.display_terms = 1
 
     def _cycle_speed(self, direction):
         self.speed_idx = (self.speed_idx + direction) % len(SPEED_LEVELS)
@@ -111,10 +120,14 @@ class StandbyState(AppState):
                 self._step_terms(5); self._key_repeat_last = 0.0
             elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                 self._step_terms(-5); self._key_repeat_last = 0.0
-            elif event.key in (pygame.K_UP, pygame.K_RIGHT):
-                self._step_terms(5); self._key_repeat_last = 0.0
-            elif event.key in (pygame.K_DOWN, pygame.K_LEFT):
-                self._step_terms(-5); self._key_repeat_last = 0.0
+            elif event.key == pygame.K_UP:
+                self._step_terms(1); self._key_repeat_last = 0.0
+            elif event.key == pygame.K_DOWN:
+                self._step_terms(-1); self._key_repeat_last = 0.0
+            elif event.key == pygame.K_RIGHT:
+                self._step_terms(1000, reset_animation=False); self._key_repeat_last = 0.0
+            elif event.key == pygame.K_LEFT:
+                self._step_terms(-1000, reset_animation=False); self._key_repeat_last = 0.0
             elif event.key in (pygame.K_PAGEUP, pygame.K_F5, pygame.K_F6, pygame.K_F7):
                 self._cycle_speed(1)
             elif event.key in (pygame.K_PAGEDOWN, pygame.K_F8, pygame.K_F9, pygame.K_F10):
@@ -131,9 +144,10 @@ class StandbyState(AppState):
 
         self._handle_key_hold(dt)
 
-        self.display_terms += dt * 6 * self._speed()
-        if self.display_terms > self.num_terms:
-            self.display_terms = 1
+        if self.num_terms < 1000:
+            self.display_terms += dt * 6 * self._speed()
+            if self.display_terms > self.num_terms:
+                self.display_terms = 1
 
         self.func_switch_timer += dt
         if self.func_switch_timer > self.FUNC_SWITCH_INTERVAL:
@@ -141,24 +155,51 @@ class StandbyState(AppState):
             self.func_idx = (self.func_idx + 1) % len(ALL_FUNCS)
             self.current_func = ALL_FUNCS[self.func_idx]
             self.data = self._precompute()
-            self.display_terms = 1
+            if self.num_terms >= 1000:
+                self.display_terms = self.num_terms
+            else:
+                self.display_terms = 1
 
     def _handle_key_hold(self, dt):
         for key, held in list(self.key_held.items()):
             if not held:
                 continue
             self.key_held_timer[key] = self.key_held_timer.get(key, 0.0) + dt
-            if key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS, pygame.K_UP, pygame.K_RIGHT):
+            if key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
                 if self.key_held_timer[key] > self._key_repeat_first:
                     used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
                     if used >= 1:
                         self._step_terms(5 * used)
                         self._key_repeat_last = self.key_held_timer[key]
-            elif key in (pygame.K_MINUS, pygame.K_KP_MINUS, pygame.K_DOWN, pygame.K_LEFT):
+            elif key == pygame.K_UP:
+                if self.key_held_timer[key] > self._key_repeat_first:
+                    used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
+                    if used >= 1:
+                        self._step_terms(1 * used)
+                        self._key_repeat_last = self.key_held_timer[key]
+            elif key == pygame.K_RIGHT:
+                if self.key_held_timer[key] > self._key_repeat_first:
+                    used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
+                    if used >= 1:
+                        self._step_terms(1000 * used, reset_animation=False)
+                        self._key_repeat_last = self.key_held_timer[key]
+            elif key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                 if self.key_held_timer[key] > self._key_repeat_first:
                     used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
                     if used >= 1:
                         self._step_terms(-5 * used)
+                        self._key_repeat_last = self.key_held_timer[key]
+            elif key == pygame.K_DOWN:
+                if self.key_held_timer[key] > self._key_repeat_first:
+                    used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
+                    if used >= 1:
+                        self._step_terms(-1 * used)
+                        self._key_repeat_last = self.key_held_timer[key]
+            elif key == pygame.K_LEFT:
+                if self.key_held_timer[key] > self._key_repeat_first:
+                    used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
+                    if used >= 1:
+                        self._step_terms(-1000 * used, reset_animation=False)
                         self._key_repeat_last = self.key_held_timer[key]
             elif key in (pygame.K_PAGEUP, pygame.K_F5, pygame.K_F6, pygame.K_F7):
                 if self.key_held_timer[key] > self._key_repeat_first:
@@ -241,7 +282,8 @@ class StandbyState(AppState):
         items = [
             ("ESPACIO", "Demo", (255, 100, 100)),
             ("1-4", "Función", (100, 200, 255)),
-            ("+/-", "Armónicos", (100, 200, 255)),
+            ("▲/▼", "1 (anim)", (100, 200, 255)),
+            ("◄/►", "1000 (fijo)", (100, 200, 255)),
             ("S/PgUp/Dn", "Velocidad", (100, 200, 255)),
             ("ESC", "Salir", (200, 100, 100)),
         ]
