@@ -24,6 +24,46 @@ def detect_wsl() -> bool:
         return False
 
 _HAS_WSL = detect_wsl()
+_IS_LINUX = sys.platform.startswith("linux")
+
+
+def _resolve_exe(dir_path: str, name: str) -> str | None:
+    if _IS_LINUX:
+        candidates = [os.path.join(dir_path, name),
+                      os.path.join(dir_path, f"{name}.exe")]
+    else:
+        candidates = [os.path.join(dir_path, f"{name}.exe"),
+                      os.path.join(dir_path, name)]
+    for path in candidates:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            return path
+        if os.path.exists(path) and _IS_LINUX:
+            try:
+                os.chmod(path, os.stat(path).st_mode | 0o111)
+                if os.access(path, os.X_OK):
+                    return path
+            except OSError:
+                pass
+    return candidates[0] if os.path.exists(candidates[0]) else candidates[-1]
+
+
+def _ensure_compiled(src_dir: str, src_file: str, output: str) -> str | None:
+    if os.path.exists(output) and os.access(output, os.X_OK):
+        return output
+    if not os.path.exists(src_file):
+        return None
+    extra_libs = []
+    if "hilos" in src_file or "Hilos" in src_dir:
+        extra_libs = ["-lpthread"]
+    cmd = ["gcc", "-O2", "-o", output, src_file, "-lm"] + extra_libs
+    try:
+        r = subprocess.run(cmd, cwd=src_dir, capture_output=True, text=True)
+        if r.returncode == 0:
+            os.chmod(output, 0o755)
+            return output
+    except FileNotFoundError:
+        pass
+    return None
 
 gpu_status = {"connected": False, "mode": "unknown", "error": ""}
 
@@ -59,10 +99,13 @@ class SequentialMethod(ComputationMethod):
         return "main"
 
     def run(self, func_type: int, num_terms: int) -> ComputationResult:
-        exe = os.path.join(BASE_DIR, "1_Secuencial", "fourier_seq.exe")
-        if not os.path.exists(exe):
-            exe = os.path.join(BASE_DIR, "1_Secuencial", "fourier_seq")
         cwd = os.path.join(BASE_DIR, "1_Secuencial")
+        exe = _resolve_exe(cwd, "fourier_seq")
+        if _IS_LINUX and (not os.access(exe, os.X_OK) if os.path.exists(exe) else True):
+            src = os.path.join(cwd, "fourier_seq.c")
+            built = _ensure_compiled(cwd, src, os.path.join(cwd, "fourier_seq"))
+            if built:
+                exe = built
         return _run_c_program(exe, cwd, self.key(), func_type, num_terms)
 
 class ThreadsMethod(ComputationMethod):
@@ -76,10 +119,13 @@ class ThreadsMethod(ComputationMethod):
         return "rutina_hilo"
 
     def run(self, func_type: int, num_terms: int) -> ComputationResult:
-        exe = os.path.join(BASE_DIR, "4_Hilos", "hilos_fourier.exe")
-        if not os.path.exists(exe):
-            exe = os.path.join(BASE_DIR, "4_Hilos", "hilos_fourier")
         cwd = os.path.join(BASE_DIR, "4_Hilos")
+        exe = _resolve_exe(cwd, "hilos_fourier")
+        if _IS_LINUX and (not os.access(exe, os.X_OK) if os.path.exists(exe) else True):
+            src = os.path.join(cwd, "hilos_fourier.c")
+            built = _ensure_compiled(cwd, src, os.path.join(cwd, "hilos_fourier"))
+            if built:
+                exe = built
         return _run_c_program(exe, cwd, self.key(), func_type, num_terms)
 
 class WSLMethod(ComputationMethod):
@@ -120,7 +166,63 @@ class WSLMethod(ComputationMethod):
         csv_path = os.path.join(win_dir, "hoja2.csv")
         return _parse_csv(csv_path, self._key, func_type, num_terms, t1 - t0)
 
+
+class NativeLinuxMethod(ComputationMethod):
+    def __init__(self, name, key, rel_dir, exe_name, source_rel, func_name, mpi=False):
+        self._name = name
+        self._key = key
+        self._rel_dir = rel_dir
+        self._exe_name = exe_name
+        self._source_rel = source_rel
+        self._func_name = func_name
+        self._mpi = mpi
+
+    def name(self) -> str:
+        return self._name
+    def key(self) -> str:
+        return self._key
+    def source_file(self) -> str:
+        return os.path.join(BASE_DIR, self._source_rel)
+    def function_to_display(self) -> str:
+        return self._func_name
+
+    def run(self, func_type: int, num_terms: int) -> ComputationResult:
+        work_dir = os.path.join(BASE_DIR, self._rel_dir)
+        exe_path = os.path.join(work_dir, self._exe_name)
+        if not os.access(exe_path, os.X_OK):
+            src_file = os.path.join(work_dir, os.path.basename(self.source_file()))
+            built = _ensure_compiled(work_dir, src_file, exe_path)
+            if not built:
+                raise RuntimeError(f"No se pudo compilar {src_file}")
+
+        if self._mpi:
+            cmd = ["mpirun", "--oversubscribe", "-np", "4", exe_path,
+                   "--func", str(func_type), "--terms", str(num_terms)]
+        else:
+            cmd = [exe_path, "--func", str(func_type), "--terms", str(num_terms)]
+
+        t0 = time.perf_counter()
+        result = subprocess.run(cmd, cwd=work_dir, capture_output=True, text=True)
+        t1 = time.perf_counter()
+
+        if result.returncode != 0:
+            raise RuntimeError(f"Error en {self._name}: {result.stderr}")
+
+        csv_path = os.path.join(work_dir, "hoja2.csv")
+        return _parse_csv(csv_path, self._key, func_type, num_terms, t1 - t0)
+
 def _run_c_program(exe: str, cwd: str, method: str, func_type: int, num_terms: int) -> ComputationResult:
+    if _IS_LINUX and not os.access(exe, os.X_OK):
+        src_dir = cwd
+        src_name = os.path.splitext(os.path.basename(exe))[0]
+        src_file = os.path.join(src_dir, f"{src_name}.c")
+        for f in os.listdir(src_dir):
+            if f.endswith(".c") and src_name in f:
+                src_file = os.path.join(src_dir, f)
+                break
+        built = _ensure_compiled(src_dir, src_file, exe)
+        if not built:
+            raise RuntimeError(f"No se pudo compilar {src_file}")
     cmd = [exe, "--func", str(func_type), "--terms", str(num_terms)]
     t0 = time.perf_counter()
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
@@ -234,7 +336,18 @@ class Orchestrator:
         self.methods.append(SequentialMethod())
         self.methods.append(ThreadsMethod())
 
-        if _HAS_WSL:
+        if _IS_LINUX:
+            self.methods.append(NativeLinuxMethod(
+                "Procesos (fork)", METHOD_PROCESSES,
+                "3_Procesos", "fourier", "3_Procesos/fourier.c",
+                "main"
+            ))
+            self.methods.append(NativeLinuxMethod(
+                "MPI", METHOD_MPI,
+                "5_MPI", "fourier_mpi", "5_MPI/fourier_mpi.c",
+                "main", mpi=True
+            ))
+        elif _HAS_WSL:
             self.methods.append(WSLMethod(
                 "Procesos (fork)", METHOD_PROCESSES,
                 "3_Procesos", "fourier", "3_Procesos/fourier.c",
