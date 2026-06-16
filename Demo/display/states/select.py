@@ -162,6 +162,16 @@ class SelectState(AppState):
         y += 30
         for m in self.orchestrator.disponible():
             color = METHOD_COLORS.get(m.key(), (200, 200, 200))
-            s = self._med_font.render(f"  - {m.name()}", True, color)
+            name = m.name()
+            if m.key() == "gpu":
+                st = self.orchestrator.gpu_status()
+                if st["mode"] == "local":
+                    name += " ● (Local)"
+                elif st["connected"]:
+                    name += " ● (Servidor)"
+                else:
+                    name += " ○ (No conectado)"
+                    color = (120, 60, 60)
+            s = self._med_font.render(f"  - {name}", True, color)
             surface.blit(s, (x, y))
             y += 22

@@ -153,11 +153,19 @@ class DemoState(AppState):
             a0 = a0_func(r.func_type)
             approx = a0 / 2 + np.sum(r.terms[:t], axis=0)
 
+            full_f_min = float(r.f_real.min())
+            full_f_max = float(r.f_real.max())
+            full_approx_all = a0 / 2 + np.sum(r.terms, axis=0)
+            full_f_min = min(full_f_min, float(full_approx_all.min()))
+            full_f_max = max(full_f_max, float(full_approx_all.max()))
+            full_margin = (full_f_max - full_f_min) * 0.08 if full_f_max > full_f_min else 1.0
+            step_y_range = (full_f_min - full_margin, full_f_max + full_margin)
+
             has_disc = r.func_type in (1, 2, 3)
             self.plot.render(surface, plot_rect, r.x, r.f_real, approx,
                              r.terms, t, glow=True,
                              title=f"Aproximación armónica ({t}/{r.num_terms})",
-                             has_discontinuity=has_disc)
+                             has_discontinuity=has_disc, y_range=step_y_range)
 
             method_obj = self.methods[self.current_idx - 1] if self.current_idx > 0 else None
             src = method_obj.source_file() if method_obj else ""
@@ -201,10 +209,16 @@ class DemoState(AppState):
 
         r0 = self.results[0]
         has_disc = r0.func_type in (1, 2, 3)
+        full_f_min = min(float(r0.f_real.min()), float(r0.fourier_approx.min()))
+        full_f_max = max(float(r0.f_real.max()), float(r0.fourier_approx.max()))
+        full_margin = (full_f_max - full_f_min) * 0.08 if full_f_max > full_f_min else 1.0
+        demo_y_range = (full_f_min - full_margin, full_f_max + full_margin)
+        n_all = min(r0.num_terms, len(r0.terms))
         self.plot.render(surface, main_plot_rect, r0.x, r0.f_real, r0.fourier_approx,
+                         terms=r0.terms, current_term=n_all,
                          glow=True,
                          title="Superposición de los 5 métodos (resultado idéntico)",
-                         has_discontinuity=has_disc)
+                         has_discontinuity=has_disc, y_range=demo_y_range)
 
         sp = r0.elapsed / min(r.elapsed for r in self.results) if self.results[0].elapsed > 0 else 1
         self.chart.render(surface, bar_rect, self.results, speedup=sp)
@@ -220,12 +234,17 @@ class DemoState(AppState):
             "5 métodos, mismo resultado:", True, (180, 220, 255))
         surface.blit(title, (rect.x, rect.y))
 
+        gpu_label = "GPU (CUDA)"
+        gpu_available = any(r.method == "gpu" for r in self.results)
+        if not gpu_available:
+            gpu_label = "GPU (no disponible)"
+
         all_methods = [
             ("secuencial", "Secuencial", (102, 252, 241)),
             ("hilos", "Hilos", (255, 0, 127)),
             ("procesos", "Procesos", (57, 255, 20)),
             ("mpi", "MPI", (255, 209, 102)),
-            ("gpu", "GPU (pendiente)", (113, 29, 154)),
+            ("gpu", gpu_label, (113, 29, 154)),
         ]
         r0 = self.results[0]
         time_map = {r.method: r.elapsed for r in self.results}

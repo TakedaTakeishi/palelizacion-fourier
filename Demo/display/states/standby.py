@@ -7,7 +7,7 @@ from core.types import (
     FUNC_X4, FUNC_SQUARE, FUNC_SAWTOOTH, FUNC_TRIANGLE,
     function_real, fourier_approximation, fourier_terms_individual, a0_func,
 )
-from core.orchestrator import Orchestrator
+from core.orchestrator import Orchestrator, METHOD_GPU
 
 ALL_FUNCS = [FUNC_X4, FUNC_SQUARE, FUNC_SAWTOOTH, FUNC_TRIANGLE]
 MAX_TERMINOS = 10000
@@ -55,9 +55,13 @@ class StandbyState(AppState):
             terms = fourier_terms_individual(x, 200, ft)
             approx = fourier_approximation(x, 200, ft)
             cumsum = np.cumsum(terms, axis=0)
+            y_min = min(float(f_real.min()), float(approx.min()))
+            y_max = max(float(f_real.max()), float(approx.max()))
+            margin = (y_max - y_min) * 0.08 if y_max > y_min else 1.0
             cls.PRECOMPUTED[ft] = {
                 "x": x, "f_real": f_real, "terms": terms, "approx": approx,
                 "cumsum": cumsum, "a0_half": a0_func(ft) / 2.0,
+                "y_range": (y_min - margin, y_max + margin),
             }
 
     def _precompute(self):
@@ -185,6 +189,7 @@ class StandbyState(AppState):
             self.data["x"], self.data["f_real"],
             approx, self.data["terms"], n_terms_to_show, glow=True,
             has_discontinuity=has_disc,
+            y_range=self.data["y_range"],
         )
 
         self._render_header(surface, w)
@@ -220,6 +225,17 @@ class StandbyState(AppState):
                 txt = self._info_font.render(f" {level}x ", True, (100, 100, 140))
             surface.blit(txt, (sx, 76))
             sx += txt.get_width() + 4
+
+        gpu_st = self.orchestrator.gpu_status()
+        if gpu_st["mode"] == "local":
+            dot = self._info_font.render("● GPU: Local", True, (100, 255, 100))
+        elif gpu_st["connected"]:
+            dot = self._info_font.render("● GPU: Servidor", True, (100, 255, 100))
+        elif gpu_st["mode"] == "unavailable":
+            dot = self._info_font.render("● GPU: No disponible", True, (200, 100, 100))
+        else:
+            dot = self._info_font.render("● GPU: Sin conexión", True, (200, 100, 100))
+        surface.blit(dot, (sx + 20, 76))
 
     def _render_footer(self, surface, w, h):
         items = [

@@ -9,4 +9,6 @@ dependencies = [
     "pandas>=2.0",
     "pyyaml>=6.0",
     "pygments>=2.16",
+    "paramiko>=3.4",
+    "python-dotenv>=1.0",
 ]

@@ -58,7 +58,8 @@ class FourierPlot:
         return ticks
 
     def render(self, surface, rect, x, f_real, approx, terms=None,
-               current_term=None, glow=True, title=None, has_discontinuity=False):
+               current_term=None, glow=True, title=None, has_discontinuity=False,
+               y_range=None):
         inner = pygame.Rect(
             rect.x + self.pad_left,
             rect.y + self.pad_top,
@@ -67,8 +68,11 @@ class FourierPlot:
         )
         pygame.draw.rect(surface, self.bg_color, inner)
 
-        all_y = [f_real, approx]
-        y_min, y_max = self._auto_yrange(*all_y, f_real=f_real)
+        if y_range is not None:
+            y_min, y_max = y_range
+        else:
+            all_y = [f_real, approx]
+            y_min, y_max = self._auto_yrange(*all_y, f_real=f_real)
         x_min, x_max = float(x.min()), float(x.max())
         if x_max == x_min:
             x_max = x_min + 1

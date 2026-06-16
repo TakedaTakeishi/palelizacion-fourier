@@ -9,7 +9,8 @@ from typing import Optional
 
 from .types import (
     ComputationResult, METHOD_SEQUENTIAL, METHOD_THREADS,
-    METHOD_PROCESSES, METHOD_MPI, FUNC_X4,
+    METHOD_PROCESSES, METHOD_MPI, METHOD_GPU,
+    FUNC_X4, FUNC_SQUARE, FUNC_SAWTOOTH, FUNC_TRIANGLE,
     function_real, fourier_approximation, fourier_terms_individual,
 )
 
@@ -23,6 +24,8 @@ def detect_wsl() -> bool:
         return False
 
 _HAS_WSL = detect_wsl()
+
+gpu_status = {"connected": False, "mode": "unknown", "error": ""}
 
 class ComputationMethod(ABC):
     @abstractmethod
@@ -151,6 +154,79 @@ def _parse_csv(csv_path: str, method: str, func_type: int, num_terms: int, elaps
         csv_path=csv_path,
     )
 
+class GpuMethod(ComputationMethod):
+    def __init__(self):
+        from .remote import resolve_mode, detect_local_cuda, test_connection, run_remote, get_status
+
+        self._resolved_mode = resolve_mode()
+        self._mode = self._resolved_mode
+
+        global gpu_status
+        gpu_status.update(get_status())
+
+    def name(self) -> str:
+        return "GPU (CUDA)"
+
+    def key(self) -> str:
+        return METHOD_GPU
+
+    def source_file(self) -> str:
+        return os.path.join(BASE_DIR, "6_GPU", "fourier_gpu.cu")
+
+    def function_to_display(self) -> str:
+        return "compute_fourier_kernel"
+
+    def status(self) -> dict:
+        from .remote import get_status
+        return get_status()
+
+    def run(self, func_type: int, num_terms: int) -> ComputationResult:
+        from .remote import resolve_mode, detect_local_cuda, test_connection, run_remote, get_status
+
+        self._resolved_mode = resolve_mode()
+
+        if self._resolved_mode == "local":
+            return self._run_local(func_type, num_terms)
+        elif self._resolved_mode == "remote":
+            return self._run_remote(func_type, num_terms)
+        else:
+            global gpu_status
+            gpu_status.update(get_status())
+            raise RuntimeError("GPU no disponible: " + gpu_status.get("error", "modo no disponible"))
+
+    def _run_local(self, func_type: int, num_terms: int) -> ComputationResult:
+        gpu_dir = os.path.join(BASE_DIR, "6_GPU")
+        cu_path = os.path.join(gpu_dir, "fourier_gpu.cu")
+
+        nvcc = subprocess.run(["which", "nvcc"], capture_output=True, text=True)
+        if nvcc.returncode != 0:
+            nvcc_win = subprocess.run(["where", "nvcc"], capture_output=True, text=True)
+            if nvcc_win.returncode != 0:
+                raise RuntimeError("nvcc no encontrado en PATH")
+
+        compile_cmd = ["nvcc", "-o", os.path.join(gpu_dir, "fourier_gpu"), cu_path, "-lm"]
+        comp = subprocess.run(compile_cmd, capture_output=True, text=True, cwd=gpu_dir)
+        if comp.returncode != 0:
+            raise RuntimeError(f"Error de compilación CUDA local: {comp.stderr}")
+
+        exe = os.path.join(gpu_dir, "fourier_gpu")
+        cmd = [exe, "--func", str(func_type), "--terms", str(num_terms)]
+        t0 = time.perf_counter()
+        result = subprocess.run(cmd, capture_output=True, text=True, cwd=gpu_dir)
+        t1 = time.perf_counter()
+        if result.returncode != 0:
+            raise RuntimeError(f"Error en GPU local: {result.stderr}")
+
+        csv_path = os.path.join(gpu_dir, "hoja2.csv")
+        return _parse_csv(csv_path, METHOD_GPU, func_type, num_terms, t1 - t0)
+
+    def _run_remote(self, func_type: int, num_terms: int) -> ComputationResult:
+        from .remote import run_remote
+
+        csv_path, elapsed = run_remote(func_type, num_terms)
+        return _parse_csv(csv_path, METHOD_GPU, func_type, num_terms, elapsed)
+
+
 class Orchestrator:
     def __init__(self):
         self.methods: list[ComputationMethod] = []
@@ -170,6 +246,12 @@ class Orchestrator:
                 "main", mpi=True
             ))
 
+        try:
+            gpu = GpuMethod()
+            self.methods.append(gpu)
+        except Exception:
+            pass
+
     def disponible(self) -> list[ComputationMethod]:
         return self.methods
 
@@ -181,6 +263,14 @@ class Orchestrator:
             results.append(r)
             print(f"    {r.elapsed:.4f}s")
         return results
+
+    def gpu_status(self) -> dict:
+        if any(m.key() == METHOD_GPU for m in self.methods):
+            try:
+                return self.methods[[m.key() for m in self.methods].index(METHOD_GPU)].status()
+            except (ValueError, AttributeError):
+                pass
+        return {"connected": False, "mode": "unavailable", "error": "GPU no disponible"}
 
     def precomputar_standby(self, func_type: int, num_terms: int, num_puntos: int = 500) -> dict:
         x = np.linspace(-np.pi, np.pi, num_puntos)
