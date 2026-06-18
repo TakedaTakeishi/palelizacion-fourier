@@ -29,22 +29,20 @@ _IS_LINUX = sys.platform.startswith("linux")
 
 def _resolve_exe(dir_path: str, name: str) -> str | None:
     if _IS_LINUX:
-        candidates = [os.path.join(dir_path, name),
-                      os.path.join(dir_path, f"{name}.exe")]
+        path = os.path.join(dir_path, name)
+        if os.path.exists(path):
+            try:
+                os.chmod(path, os.stat(path).st_mode | 0o111)
+            except OSError:
+                pass
+        return path
     else:
         candidates = [os.path.join(dir_path, f"{name}.exe"),
                       os.path.join(dir_path, name)]
-    for path in candidates:
-        if os.path.exists(path) and os.access(path, os.X_OK):
-            return path
-        if os.path.exists(path) and _IS_LINUX:
-            try:
-                os.chmod(path, os.stat(path).st_mode | 0o111)
-                if os.access(path, os.X_OK):
-                    return path
-            except OSError:
-                pass
-    return candidates[0] if os.path.exists(candidates[0]) else candidates[-1]
+        for path in candidates:
+            if os.path.exists(path) and os.access(path, os.X_OK):
+                return path
+        return candidates[0] if os.path.exists(candidates[0]) else candidates[-1]
 
 
 def _ensure_compiled(src_dir: str, src_file: str, output: str) -> str | None:
@@ -52,10 +50,13 @@ def _ensure_compiled(src_dir: str, src_file: str, output: str) -> str | None:
         return output
     if not os.path.exists(src_file):
         return None
+    compiler = "gcc"
     extra_libs = []
     if "hilos" in src_file or "Hilos" in src_dir:
         extra_libs = ["-lpthread"]
-    cmd = ["gcc", "-O2", "-o", output, src_file, "-lm"] + extra_libs
+    elif "mpi" in src_file or "MPI" in src_dir:
+        compiler = "mpicc"
+    cmd = [compiler, "-O2", "-o", output, src_file, "-lm"] + extra_libs
     try:
         r = subprocess.run(cmd, cwd=src_dir, capture_output=True, text=True)
         if r.returncode == 0:
@@ -238,8 +239,9 @@ def _parse_csv(csv_path: str, method: str, func_type: int, num_terms: int, elaps
     approx = df["F(X)"].values.astype(np.float64)
     f_real = df["f(x)"].values.astype(np.float64)
 
-    terms_arr = np.zeros((num_terms, len(x)))
-    for n in range(1, num_terms + 1):
+    saved_terms = min(num_terms, 100)
+    terms_arr = np.zeros((saved_terms, len(x)))
+    for n in range(1, saved_terms + 1):
         col = str(n)
         if col in df.columns:
             terms_arr[n - 1] = df[col].values.astype(np.float64)
@@ -273,10 +275,10 @@ class GpuMethod(ComputationMethod):
         return METHOD_GPU
 
     def source_file(self) -> str:
-        return os.path.join(BASE_DIR, "6_GPU", "fourier_gpu.cu")
+        return os.path.join(BASE_DIR, "7_CUDA", "fourier.cu")
 
     def function_to_display(self) -> str:
-        return "compute_fourier_kernel"
+        return "calcular_fourier_kernel"
 
     def status(self) -> dict:
         from .remote import get_status
@@ -297,21 +299,23 @@ class GpuMethod(ComputationMethod):
             raise RuntimeError("GPU no disponible: " + gpu_status.get("error", "modo no disponible"))
 
     def _run_local(self, func_type: int, num_terms: int) -> ComputationResult:
-        gpu_dir = os.path.join(BASE_DIR, "6_GPU")
-        cu_path = os.path.join(gpu_dir, "fourier_gpu.cu")
+        gpu_dir = os.path.join(BASE_DIR, "7_CUDA")
+        cu_path = os.path.join(gpu_dir, "fourier.cu")
+        exe = os.path.join(gpu_dir, "fourier")
 
-        nvcc = subprocess.run(["which", "nvcc"], capture_output=True, text=True)
-        if nvcc.returncode != 0:
-            nvcc_win = subprocess.run(["where", "nvcc"], capture_output=True, text=True)
-            if nvcc_win.returncode != 0:
-                raise RuntimeError("nvcc no encontrado en PATH")
+        if not os.path.exists(exe) or not os.access(exe, os.X_OK):
+            nvcc = subprocess.run(["which", "nvcc"], capture_output=True, text=True)
+            if nvcc.returncode != 0:
+                nvcc_win = subprocess.run(["where", "nvcc"], capture_output=True, text=True)
+                if nvcc_win.returncode != 0:
+                    raise RuntimeError("nvcc no encontrado en PATH")
 
-        compile_cmd = ["nvcc", "-o", os.path.join(gpu_dir, "fourier_gpu"), cu_path, "-lm"]
-        comp = subprocess.run(compile_cmd, capture_output=True, text=True, cwd=gpu_dir)
-        if comp.returncode != 0:
-            raise RuntimeError(f"Error de compilación CUDA local: {comp.stderr}")
+            compile_cmd = ["nvcc", "-o", exe, cu_path, "-lm"]
+            comp = subprocess.run(compile_cmd, capture_output=True, text=True, cwd=gpu_dir)
+            if comp.returncode != 0:
+                raise RuntimeError(f"Error de compilación CUDA local: {comp.stderr}")
+            os.chmod(exe, 0o755)
 
-        exe = os.path.join(gpu_dir, "fourier_gpu")
         cmd = [exe, "--func", str(func_type), "--terms", str(num_terms)]
         t0 = time.perf_counter()
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=gpu_dir)
@@ -386,10 +390,11 @@ class Orchestrator:
         return {"connected": False, "mode": "unavailable", "error": "GPU no disponible"}
 
     def precomputar_standby(self, func_type: int, num_terms: int, num_puntos: int = 500) -> dict:
+        calc_terms = min(num_terms, 100)
         x = np.linspace(-np.pi, np.pi, num_puntos)
         f_real = function_real(x, func_type)
-        terms = fourier_terms_individual(x, num_terms, func_type)
-        approx = fourier_approximation(x, num_terms, func_type)
+        terms = fourier_terms_individual(x, calc_terms, func_type)
+        approx = fourier_approximation(x, calc_terms, func_type)
         return {
             "x": x,
             "f_real": f_real,
