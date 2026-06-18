@@ -20,18 +20,19 @@ static void escribir_hoja1(DatosFourier *datos) {
 }
 
 static void escribir_hoja2(DatosFourier *datos) {
-    int nt = datos->num_terminos;
+    long long nt = datos->num_terminos;
     FILE *fp = fopen(CSV_HOJA2, "w");
     if (!fp) { perror("Error al crear hoja2.csv"); return; }
     fprintf(fp, "\n\"F(x) = Serie de Fourier - %s\"\n", func_description(datos->func_type));
-    for (int n = 1; n <= nt; n++) fprintf(fp, ",n =");
+    long long cols = (nt < MAX_SAVED_TERMINOS) ? nt : MAX_SAVED_TERMINOS;
+    for (long long n = 1; n <= cols; n++) fprintf(fp, ",n =");
     fprintf(fp, ",,,,\n");
     fprintf(fp, "x");
-    for (int n = 1; n <= nt; n++) fprintf(fp, ",%d", n);
+    for (long long n = 1; n <= cols; n++) fprintf(fp, ",%lld", n);
     fprintf(fp, ",a0,x,F(X),f(x)\n");
     for (int i = 0; i < NUM_PUNTOS; i++) {
         fprintf(fp, "%.10g", datos->x_vals[i]);
-        for (int n = 0; n < nt; n++)
+        for (long long n = 0; n < cols; n++)
             fprintf(fp, ",%.15g", datos->hoja2_terminos[i][n]);
         fprintf(fp, ",%.15g,%.10g,%.15g,%.15g\n",
                 datos->hoja2_a0, datos->x_vals[i],
@@ -51,7 +52,7 @@ static void generar_puntos_x(double *x_vals) {
 int main(int argc, char **argv) {
     int rank = 0, world_size = 0;
     int func_type = FUNC_X4;
-    int num_terminos = 50;
+    long long num_terminos = 50;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -60,7 +61,7 @@ int main(int argc, char **argv) {
     if (rank == 0) {
         for (int i = 1; i < argc; i++) {
             if (strcmp(argv[i], "--func") == 0 && i + 1 < argc) func_type = atoi(argv[++i]);
-            else if (strcmp(argv[i], "--terms") == 0 && i + 1 < argc) num_terminos = atoi(argv[++i]);
+            else if (strcmp(argv[i], "--terms") == 0 && i + 1 < argc) num_terminos = atoll(argv[++i]);
         }
         if (func_type < 0 || func_type >= NUM_FUNC_TYPES) {
             fprintf(stderr, "Error: tipo de funcion invalido\n"); MPI_Abort(MPI_COMM_WORLD, 1);
@@ -71,7 +72,7 @@ int main(int argc, char **argv) {
     }
 
     MPI_Bcast(&func_type, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&num_terminos, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&num_terminos, 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD);
 
     if (world_size != 4) {
         if (rank == 0) printf("Error: se requieren exactamente 4 procesos.\n");
@@ -87,7 +88,7 @@ int main(int argc, char **argv) {
     if (rank == 0) {
         printf("============================================================\n");
         printf("  Serie de Fourier — MPI\n");
-        printf("  Funcion: %s  |  Terminos: %d  |  Procesos: %d\n",
+        printf("  Funcion: %s  |  Terminos: %lld  |  Procesos: %d\n",
                func_description(func_type), num_terminos, world_size);
         printf("============================================================\n\n");
         generar_puntos_x(datos->x_vals);
@@ -110,14 +111,15 @@ int main(int argc, char **argv) {
     }
 
     int local_count = (local_end > local_start) ? (local_end - local_start) : 0;
+    long long saved_terms = (num_terminos < MAX_SAVED_TERMINOS) ? num_terminos : MAX_SAVED_TERMINOS;
 
     double *local_hoja1 = local_count > 0 ? (double *)calloc(local_count, sizeof(double)) : NULL;
-    double *local_terminos = local_count > 0 ? (double *)calloc(local_count * num_terminos, sizeof(double)) : NULL;
+    double *local_terminos = local_count > 0 ? (double *)calloc(local_count * saved_terms, sizeof(double)) : NULL;
     double *local_Fx = local_count > 0 ? (double *)calloc(local_count, sizeof(double)) : NULL;
     double *local_fx = local_count > 0 ? (double *)calloc(local_count, sizeof(double)) : NULL;
 
     if (rank > 0 && local_count > 0) {
-        int nt = num_terminos;
+        long long nt = num_terminos;
         int ft = func_type;
         printf("[Trabajador %d] Calculando filas [%d, %d)\n", rank, local_start, local_end);
         for (int fila = local_start; fila < local_end; fila++) {
@@ -125,9 +127,11 @@ int main(int argc, char **argv) {
             double x = datos->x_vals[fila];
             local_hoja1[idx] = f_func(x, ft);
             double suma = 0.0;
-            for (int n = 1; n <= nt; n++) {
+            for (long long n = 1; n <= nt; n++) {
                 double term = termino_fourier_func(n, x, ft);
-                local_terminos[idx * nt + (n - 1)] = term;
+                if (n <= saved_terms) {
+                    local_terminos[idx * saved_terms + (n - 1)] = term;
+                }
                 suma += term;
             }
             local_Fx[idx] = (datos->hoja2_a0 / 2.0) + suma;
@@ -173,17 +177,17 @@ int main(int argc, char **argv) {
             int start = wi * rb + (wi < rr ? wi : rr);
             int end = start + rb + extra;
             int count = (end > start) ? (end - start) : 0;
-            recv_counts_terms[r] = count * num_terminos;
+            recv_counts_terms[r] = count * saved_terms;
             recv_displs_terms[r] = (r == 1) ? 0 : recv_displs_terms[r-1] + recv_counts_terms[r-1];
         }
-        double *flat_terms = calloc(NUM_PUNTOS * num_terminos, sizeof(double));
+        double *flat_terms = calloc(NUM_PUNTOS * saved_terms, sizeof(double));
         if (flat_terms) {
-            MPI_Gatherv(local_terminos, local_count * num_terminos, MPI_DOUBLE,
+            MPI_Gatherv(local_terminos, local_count * saved_terms, MPI_DOUBLE,
                         flat_terms, recv_counts_terms, recv_displs_terms,
                         MPI_DOUBLE, 0, MPI_COMM_WORLD);
             for (int i = 0; i < NUM_PUNTOS; i++) {
-                for (int n = 0; n < num_terminos; n++) {
-                    datos->hoja2_terminos[i][n] = flat_terms[i * num_terminos + n];
+                for (int n = 0; n < saved_terms; n++) {
+                    datos->hoja2_terminos[i][n] = flat_terms[i * saved_terms + n];
                 }
             }
             free(flat_terms);
@@ -191,7 +195,7 @@ int main(int argc, char **argv) {
     } else {
         int zero_counts[4] = {0, 0, 0, 0};
         int zero_displs[4] = {0, 0, 0, 0};
-        MPI_Gatherv(local_terminos, local_count * num_terminos, MPI_DOUBLE,
+        MPI_Gatherv(local_terminos, local_count * saved_terms, MPI_DOUBLE,
                     NULL, zero_counts, zero_displs,
                     MPI_DOUBLE, 0, MPI_COMM_WORLD);
     }
