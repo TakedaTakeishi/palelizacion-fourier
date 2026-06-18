@@ -35,18 +35,19 @@ static void escribir_hoja1(DatosFourier *datos) {
 }
 
 static void escribir_hoja2(DatosFourier *datos) {
-    int nt = datos->num_terminos;
+    long long nt = datos->num_terminos;
     FILE *fp = fopen(CSV_HOJA2, "w");
     if (!fp) { perror("Error al crear hoja2.csv"); return; }
     fprintf(fp, "\n\"F(x) = Serie de Fourier - %s\"\n", func_description(datos->func_type));
-    for (int n = 1; n <= nt; n++) fprintf(fp, ",n =");
+    long long cols = (nt < MAX_SAVED_TERMINOS) ? nt : MAX_SAVED_TERMINOS;
+    for (long long n = 1; n <= cols; n++) fprintf(fp, ",n =");
     fprintf(fp, ",,,,\n");
     fprintf(fp, "x");
-    for (int n = 1; n <= nt; n++) fprintf(fp, ",%d", n);
+    for (long long n = 1; n <= cols; n++) fprintf(fp, ",%lld", n);
     fprintf(fp, ",a0,x,F(X),f(x)\n");
     for (int i = 0; i < NUM_PUNTOS; i++) {
         fprintf(fp, "%.10g", datos->x_vals[i]);
-        for (int n = 0; n < nt; n++)
+        for (long long n = 0; n < cols; n++)
             fprintf(fp, ",%.15g", datos->hoja2_terminos[i][n]);
         fprintf(fp, ",%.15g,%.10g,%.15g,%.15g\n",
                 datos->hoja2_a0, datos->x_vals[i],
@@ -59,7 +60,7 @@ static void escribir_hoja2(DatosFourier *datos) {
 void *rutina_hilo(void *argumentos) {
     ArgumentosHilo *args = (ArgumentosHilo *)argumentos;
     DatosFourier *datos = args->datos;
-    int nt = datos->num_terminos;
+    long long nt = datos->num_terminos;
     int ft = datos->func_type;
 
     printf("[Hilo %d] Calculando filas [%d, %d)\n",
@@ -69,9 +70,11 @@ void *rutina_hilo(void *argumentos) {
         double x = datos->x_vals[fila];
         datos->hoja1_fx[fila] = f_func(x, ft);
         double suma = 0.0;
-        for (int n = 1; n <= nt; n++) {
+        for (long long n = 1; n <= nt; n++) {
             double term = termino_fourier_func(n, x, ft);
-            datos->hoja2_terminos[fila][n - 1] = term;
+            if (n <= MAX_SAVED_TERMINOS) {
+                datos->hoja2_terminos[fila][n - 1] = term;
+            }
             suma += term;
         }
         datos->hoja2_Fx[fila] = (datos->hoja2_a0 / 2.0) + suma;
@@ -85,18 +88,18 @@ void *rutina_hilo(void *argumentos) {
 static void print_usage(const char *prog) {
     fprintf(stderr, "Uso: %s [--func TYPE] [--terms N]\n", prog);
     fprintf(stderr, "  --func TYPE   0=x^4-3x, 1=square, 2=sawtooth, 3=triangle  (def: 0)\n");
-    fprintf(stderr, "  --terms N     Numero de terminos (1..%d, def: 50)\n", MAX_TERMINOS);
+    fprintf(stderr, "  --terms N     Numero de terminos (1..%lld, def: 50)\n", MAX_TERMINOS);
 }
 
 int main(int argc, char **argv) {
     int func_type = FUNC_X4;
-    int num_terminos = 50;
+    long long num_terminos = 50;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--func") == 0 && i + 1 < argc)
             func_type = atoi(argv[++i]);
         else if (strcmp(argv[i], "--terms") == 0 && i + 1 < argc)
-            num_terminos = atoi(argv[++i]);
+            num_terminos = atoll(argv[++i]);
         else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]); return 0;
         }
@@ -105,7 +108,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Error: tipo de funcion invalido: %d\n", func_type); return 1;
     }
     if (num_terminos < 1 || num_terminos > MAX_TERMINOS) {
-        fprintf(stderr, "Error: terminos debe estar entre 1 y %d\n", MAX_TERMINOS); return 1;
+        fprintf(stderr, "Error: terminos debe estar entre 1 y %lld\n", MAX_TERMINOS); return 1;
     }
 
     pthread_t identificadores[NUM_HILOS];
@@ -119,7 +122,7 @@ int main(int argc, char **argv) {
 
     printf("============================================================\n");
     printf("  Serie de Fourier — Hilos (pthreads)\n");
-    printf("  Funcion: %s  |  Terminos: %d  |  Hilos: %d\n",
+    printf("  Funcion: %s  |  Terminos: %lld  |  Hilos: %d\n",
            func_description(func_type), num_terminos, NUM_HILOS);
     printf("============================================================\n\n");
 
