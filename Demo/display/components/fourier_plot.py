@@ -1,4 +1,4 @@
-﻿import numpy as np
+import numpy as np
 import pygame
 
 class FourierPlot:
@@ -111,8 +111,9 @@ class FourierPlot:
         if terms is not None and current_term is not None:
             n_termas = min(current_term, len(terms))
             if n_termas > 20:
+                draw_count = min(n_termas, 30)
                 term_surf = pygame.Surface((inner.width, inner.height), pygame.SRCALPHA)
-                for i in range(n_termas):
+                for i in range(draw_count):
                     pts = [to_screen(x[j], terms[i][j]) for j in range(len(x))]
                     try:
                         pygame.draw.lines(term_surf, (90, 90, 130, 50), False, pts, 1)
