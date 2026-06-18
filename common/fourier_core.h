@@ -4,8 +4,9 @@
 #include <math.h>
 #include <stdio.h>
 
-#define MAX_TERMINOS   10000
-#define NUM_PUNTOS      64
+#define MAX_SAVED_TERMINOS   100
+#define MAX_TERMINOS         20000000000LL
+#define NUM_PUNTOS           64
 
 #define FUNC_X4         0
 #define FUNC_SQUARE     1
@@ -30,11 +31,11 @@ static const char *FUNC_CSV_HEADERS[] = {
 typedef struct {
     double x_vals[NUM_PUNTOS];
     double hoja1_fx[NUM_PUNTOS];
-    double hoja2_terminos[NUM_PUNTOS][MAX_TERMINOS];
+    double hoja2_terminos[NUM_PUNTOS][MAX_SAVED_TERMINOS];
     double hoja2_a0;
     double hoja2_Fx[NUM_PUNTOS];
     double hoja2_fx[NUM_PUNTOS];
-    int    num_terminos;
+    long long num_terminos;
     int    func_type;
 } DatosFourier;
 
