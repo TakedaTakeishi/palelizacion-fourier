@@ -1,4 +1,4 @@
-﻿import pygame
+import pygame
 import numpy as np
 from display.states.state import AppState
 from display.components.fourier_plot import FourierPlot
@@ -10,7 +10,7 @@ from core.types import (
 from core.orchestrator import Orchestrator, METHOD_GPU
 
 ALL_FUNCS = [FUNC_X4, FUNC_SQUARE, FUNC_SAWTOOTH, FUNC_TRIANGLE]
-MAX_TERMINOS = 10_000_000
+MAX_TERMINOS = 20_000_000_000
 SPEED_LEVELS = [0.5, 1.0, 1.5, 3.0, 6.0, 12.0]
 
 class StandbyState(AppState):
@@ -121,9 +121,19 @@ class StandbyState(AppState):
             elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                 self._step_terms(-5); self._key_repeat_last = 0.0
             elif event.key == pygame.K_UP:
-                self._step_terms(1); self._key_repeat_last = 0.0
+                mods = pygame.key.get_mods()
+                if mods & pygame.KMOD_SHIFT:
+                    self._step_terms(1_000_000)
+                else:
+                    self._step_terms(1)
+                self._key_repeat_last = 0.0
             elif event.key == pygame.K_DOWN:
-                self._step_terms(-1); self._key_repeat_last = 0.0
+                mods = pygame.key.get_mods()
+                if mods & pygame.KMOD_SHIFT:
+                    self._step_terms(-1_000_000)
+                else:
+                    self._step_terms(-1)
+                self._key_repeat_last = 0.0
             elif event.key == pygame.K_RIGHT:
                 self._step_terms(1000, reset_animation=False); self._key_repeat_last = 0.0
             elif event.key == pygame.K_LEFT:
@@ -175,7 +185,9 @@ class StandbyState(AppState):
                 if self.key_held_timer[key] > self._key_repeat_first:
                     used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
                     if used >= 1:
-                        self._step_terms(1 * used)
+                        mods = pygame.key.get_mods()
+                        step = 1_000_000 if (mods & pygame.KMOD_SHIFT) else 1
+                        self._step_terms(step * used)
                         self._key_repeat_last = self.key_held_timer[key]
             elif key == pygame.K_RIGHT:
                 if self.key_held_timer[key] > self._key_repeat_first:
@@ -193,7 +205,9 @@ class StandbyState(AppState):
                 if self.key_held_timer[key] > self._key_repeat_first:
                     used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
                     if used >= 1:
-                        self._step_terms(-1 * used)
+                        mods = pygame.key.get_mods()
+                        step = 1_000_000 if (mods & pygame.KMOD_SHIFT) else 1
+                        self._step_terms(-step * used)
                         self._key_repeat_last = self.key_held_timer[key]
             elif key == pygame.K_LEFT:
                 if self.key_held_timer[key] > self._key_repeat_first:
@@ -250,7 +264,7 @@ class StandbyState(AppState):
 
         ft = FUNC_SHORT_NAMES[self.current_func]
         nt = int(self.display_terms)
-        lbl = f"f(x): {ft}    |    Armónicos: {nt}/{self.num_terms}"
+        lbl = f"f(x): {ft}    |    Armónicos: {nt:,}/{self.num_terms:,}"
         info = self._info_font.render(lbl, True, (180, 180, 220))
         surface.blit(info, (20, 52))
 
@@ -283,8 +297,8 @@ class StandbyState(AppState):
             ("ESPACIO", "Demo", (255, 100, 100)),
             ("1-4", "Función", (100, 200, 255)),
             ("▲/▼", "1 (anim)", (100, 200, 255)),
-            ("◄/►", "1000 (fijo)", (100, 200, 255)),
-            ("S/PgUp/Dn", "Velocidad", (100, 200, 255)),
+            ("Shift+▲/▼", "1M", (100, 200, 255)),
+            ("◄/►", "1000", (100, 200, 255)),
             ("ESC", "Salir", (200, 100, 100)),
         ]
         x = 20
