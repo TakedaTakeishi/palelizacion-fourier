@@ -1,4 +1,4 @@
-﻿import pygame
+import pygame
 import numpy as np
 from display.states.state import AppState
 from display.components.fourier_plot import FourierPlot
@@ -35,7 +35,7 @@ class SelectState(AppState):
         x = np.linspace(-np.pi, np.pi, 400)
         f_real = function_real(x, self.func_type)
         terms = fourier_terms_individual(x, 200, self.func_type)
-        approx = fourier_approximation(x, self.num_terms, self.func_type)
+        approx = fourier_approximation(x, min(self.num_terms, 1000), self.func_type)
         return {"x": x, "f_real": f_real, "terms": terms[:max_t], "approx": approx}
 
     def enter(self):
@@ -46,7 +46,7 @@ class SelectState(AppState):
 
     def _step_terms(self, delta):
         new_val = self.num_terms + delta
-        new_val = max(1, min(10_000_000, new_val))
+        new_val = max(1, min(20_000_000_000, new_val))
         if new_val != self.num_terms:
             self.num_terms = new_val
             self.preview = self._make_preview()
@@ -70,9 +70,19 @@ class SelectState(AppState):
             elif event.key == pygame.K_3: self._set_function(2)
             elif event.key == pygame.K_4: self._set_function(3)
             elif event.key == pygame.K_UP:
-                self._step_terms(1); self._key_repeat_last = 0.0
+                mods = pygame.key.get_mods()
+                if mods & pygame.KMOD_SHIFT:
+                    self._step_terms(1_000_000)
+                else:
+                    self._step_terms(1)
+                self._key_repeat_last = 0.0
             elif event.key == pygame.K_DOWN:
-                self._step_terms(-1); self._key_repeat_last = 0.0
+                mods = pygame.key.get_mods()
+                if mods & pygame.KMOD_SHIFT:
+                    self._step_terms(-1_000_000)
+                else:
+                    self._step_terms(-1)
+                self._key_repeat_last = 0.0
             elif event.key == pygame.K_RIGHT:
                 self._step_terms(1000); self._key_repeat_last = 0.0
             elif event.key == pygame.K_LEFT:
@@ -103,7 +113,9 @@ class SelectState(AppState):
                 if self.key_held_timer[key] > self._key_repeat_first:
                     used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
                     if used >= 1:
-                        self._step_terms(1 * used)
+                        mods = pygame.key.get_mods()
+                        step = 1_000_000 if (mods & pygame.KMOD_SHIFT) else 1
+                        self._step_terms(step * used)
                         self._key_repeat_last = self.key_held_timer[key]
             elif key == pygame.K_RIGHT:
                 if self.key_held_timer[key] > self._key_repeat_first:
@@ -121,7 +133,9 @@ class SelectState(AppState):
                 if self.key_held_timer[key] > self._key_repeat_first:
                     used = int((self.key_held_timer[key] - self._key_repeat_last) / self._key_repeat_int)
                     if used >= 1:
-                        self._step_terms(-1 * used)
+                        mods = pygame.key.get_mods()
+                        step = 1_000_000 if (mods & pygame.KMOD_SHIFT) else 1
+                        self._step_terms(-step * used)
                         self._key_repeat_last = self.key_held_timer[key]
             elif key == pygame.K_LEFT:
                 if self.key_held_timer[key] > self._key_repeat_first:
@@ -150,7 +164,7 @@ class SelectState(AppState):
                                 int(w * 0.34), int(h * 0.65))
         self._render_info(surface, info_rect, w, h)
 
-        for txt in ["[ENTER] Iniciar  |  [1-4] Función  |  [▲/▼] 1  [◄/►] 1000  [+/-] 5  |  [ESC] Volver"]:
+        for txt in ["[ENTER] Iniciar  |  [1-4] Función  |  [▲/▼] 1  [Shift+▲/▼] 1M  [◄/►] 1000  |  [ESC] Volver"]:
             s = self._ctrl_font.render(txt, True, (150, 200, 150))
             surface.blit(s, (w//2 - s.get_width()//2, h - 30))
 
@@ -177,7 +191,7 @@ class SelectState(AppState):
         y += 35
 
         nt_color = (255, 200, 100) if self.num_terms < 50 else (100, 255, 150)
-        s = self._big_font.render(f"{self.num_terms}", True, nt_color)
+        s = self._big_font.render(f"{self.num_terms:,}", True, nt_color)
         surface.blit(s, (x, y))
         y += 30
 
