@@ -14,7 +14,7 @@ def test_gpu_method_exists():
     gpu = methods[0]
     assert gpu.name() == "GPU (CUDA)"
     assert gpu.key() == METHOD_GPU
-    assert gpu.source_file().endswith("fourier_gpu.cu")
+    assert gpu.source_file().endswith("fourier.cu")
     print(f"  GPU method: {gpu.name()} ✓")
 
 
