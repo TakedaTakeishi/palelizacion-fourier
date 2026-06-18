@@ -1,6 +1,16 @@
-﻿import pygame
+import pygame
 import numpy as np
+import math
 from display.states.state import AppState
+
+def get_displayed_term(anim_term, num_terms, saved_terms):
+    if saved_terms <= 1 or num_terms <= 1:
+        return num_terms
+    if anim_term >= saved_terms:
+        return num_terms
+    ratio = (anim_term - 1) / (saved_terms - 1)
+    val = int(np.exp(ratio * np.log(num_terms)))
+    return max(1, min(num_terms, val))
 from display.components.fourier_plot import FourierPlot
 from display.components.bar_chart import BarChart
 from display.components.code_panel import CodePanel
@@ -17,7 +27,7 @@ class DemoState(AppState):
         super().__init__()
         self.orchestrator = orchestrator
         self.func_type = func_type
-        self.num_terms = min(num_terms, 10000)
+        self.num_terms = min(num_terms, 20_000_000_000)
         self.plot = FourierPlot(font_size=14)
         self.chart = BarChart(font_size=14)
         self.code_panel = CodePanel(font_size=13)
@@ -96,6 +106,7 @@ class DemoState(AppState):
                     self.anim_term = 1
                 self.phase_timer = 0
                 self.current_idx += 1
+                self.last_time = pygame.time.get_ticks() / 1000.0
             else:
                 self.phase = PHASE_COMPARISON
                 self.phase_timer = 0
@@ -107,9 +118,10 @@ class DemoState(AppState):
                 self.phase_timer = 0
 
         elif self.phase == PHASE_ANIMATING:
-            anim_rate = min(self.num_terms / 1.5, 200.0)
+            saved_terms = min(self.num_terms, 100)
+            anim_rate = saved_terms / 2.0  # Animate over 2.0 seconds
             self.anim_term += dt * anim_rate
-            if self.anim_term >= self.num_terms or self.phase_timer > 4.0:
+            if self.anim_term >= saved_terms or self.phase_timer > 3.0:
                 if self.current_idx < len(self.methods):
                     self.phase = PHASE_RUNNING
                 else:
@@ -149,9 +161,16 @@ class DemoState(AppState):
             title = self._title_font.render(f">> {name}", True, color)
             surface.blit(title, (20, 10))
 
-            t = min(int(self.anim_term), r.num_terms)
+            saved_terms = min(r.num_terms, 100)
+            anim_t = min(int(self.anim_term), saved_terms)
             a0 = a0_func(r.func_type)
-            approx = a0 / 2 + np.sum(r.terms[:t], axis=0)
+
+            if self.anim_term >= saved_terms:
+                approx = r.fourier_approx
+                displayed_t = r.num_terms
+            else:
+                approx = a0 / 2 + np.sum(r.terms[:anim_t], axis=0)
+                displayed_t = get_displayed_term(self.anim_term, r.num_terms, saved_terms)
 
             full_f_min = float(r.f_real.min())
             full_f_max = float(r.f_real.max())
@@ -163,8 +182,8 @@ class DemoState(AppState):
 
             has_disc = r.func_type in (1, 2, 3)
             self.plot.render(surface, plot_rect, r.x, r.f_real, approx,
-                             r.terms, t, glow=True,
-                             title=f"Aproximación armónica ({t}/{r.num_terms})",
+                             r.terms, anim_t, glow=True,
+                             title=f"Aproximación armónica ({displayed_t:,}/{r.num_terms:,})",
                              has_discontinuity=has_disc, y_range=step_y_range)
 
             method_obj = self.methods[self.current_idx - 1] if self.current_idx > 0 else None
