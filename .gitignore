@@ -14,7 +14,7 @@ wheels/
 
 # Generated CSV files
 **/hoja*.csv
-
+**/resultados_*.csv
 # Compiled binaries (local + remote)
 **/*.exe
 6_GPU/fourier_gpu
