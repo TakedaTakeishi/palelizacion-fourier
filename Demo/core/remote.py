@@ -103,12 +103,12 @@ def run_remote(func_type, num_terms):
     stdout.channel.recv_exit_status()
 
     sftp = client.open_sftp()
-    cu_local = os.path.join(os.path.dirname(__file__), "..", "..", "6_GPU", "fourier_gpu.cu")
-    cu_remote = f"{remote_dir}/fourier_gpu.cu"
+    cu_local = os.path.join(os.path.dirname(__file__), "..", "..", "7_CUDA", "fourier.cu")
+    cu_remote = f"{remote_dir}/fourier.cu"
     sftp.put(cu_local, cu_remote)
     sftp.close()
 
-    compile_cmd = f"cd {remote_dir} && nvcc -o fourier_gpu fourier_gpu.cu -lm 2>&1"
+    compile_cmd = f"cd {remote_dir} && nvcc -o fourier fourier.cu -lm 2>&1"
     _, stdout, stderr = client.exec_command(compile_cmd)
     exit_status = stdout.channel.recv_exit_status()
     compile_output = stdout.read().decode() + stderr.read().decode()
@@ -116,7 +116,7 @@ def run_remote(func_type, num_terms):
         client.close()
         raise RuntimeError(f"Error de compilación en servidor:\n{compile_output}")
 
-    run_cmd = f"cd {remote_dir} && ./fourier_gpu --func {func_type} --terms {num_terms} 2>&1"
+    run_cmd = f"cd {remote_dir} && ./fourier --func {func_type} --terms {num_terms} 2>&1"
     t0 = time.perf_counter()
     _, stdout, stderr = client.exec_command(run_cmd)
     exit_status = stdout.channel.recv_exit_status()
@@ -127,12 +127,12 @@ def run_remote(func_type, num_terms):
         raise RuntimeError(f"Error de ejecución en servidor:\n{run_output}")
 
     csv_remote = f"{remote_dir}/hoja2.csv"
-    csv_local = os.path.join(os.path.dirname(__file__), "..", "..", "6_GPU", "hoja2.csv")
+    csv_local = os.path.join(os.path.dirname(__file__), "..", "..", "7_CUDA", "hoja2.csv")
     sftp2 = client.open_sftp()
     sftp2.get(csv_remote, csv_local)
     sftp2.close()
 
-    client.exec_command(f"rm -f {remote_dir}/fourier_gpu.cu {remote_dir}/fourier_gpu {remote_dir}/hoja2.csv")
+    client.exec_command(f"rm -f {remote_dir}/fourier.cu {remote_dir}/fourier {remote_dir}/hoja2.csv")
 
     client.close()
     return csv_local, t1 - t0
